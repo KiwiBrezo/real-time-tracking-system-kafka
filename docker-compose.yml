@@ -1,0 +1,57 @@
+version: "3.2"
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.2.0
+    container_name: zookeeper
+    hostname: zookeeper
+    networks:
+      - kafka-network
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: echo stat | nc localhost 2181
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    environment:
+      - ZOOKEEPER_SERVER_ID=1
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+      - ZOOKEEPER_SERVERS=zookeeper:2888:3888
+    volumes:
+      - ./kafka_cluster/zk/data:/var/lib/zookeeper/data
+      - ./kafka_cluster/zk/logs:/var/lib/zookeeper/log
+
+  kafka1:
+    image: confluentinc/cp-kafka:6.2.0
+    container_name: kafka1
+    hostname: kafka1
+    networks:
+      - kafka-network
+    healthcheck:
+      test: ps augwwx | egrep [S]upportedKafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9091:9091"
+      - "19991:19991"
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=INSIDE://:19091,OUTSIDE://${KAFKA_LISTENER_NAME}:9091
+      - KAFKA_LISTENERS=INSIDE://:19091,OUTSIDE://:9091
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INSIDE
+      - BOOTSTRAP_SERVERS=kafka1:19091
+      - KAFKA_JMX_PORT=19991
+    volumes:
+      - ./kafka_cluster/kafka/kafka_1_data:/var/lib/kafka/data
+    mem_limit: 512m
+
+networks:
+  kafka-network:
+    driver: bridge
+    ipam:
+     config:
+       - subnet: 10.5.0.0/16
+         gateway: 10.5.0.1
