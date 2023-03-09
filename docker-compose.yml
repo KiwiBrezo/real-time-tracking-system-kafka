@@ -8,19 +8,14 @@ services:
       - kafka-network
     ports:
       - "2181:2181"
-    healthcheck:
-      test: echo stat | nc localhost 2181
-      interval: 10s
-      timeout: 10s
-      retries: 3
     environment:
       - ZOOKEEPER_SERVER_ID=1
       - ZOOKEEPER_CLIENT_PORT=2181
       - ZOOKEEPER_TICK_TIME=2000
       - ZOOKEEPER_SERVERS=zookeeper:2888:3888
     volumes:
-      - ./kafka_cluster/zk/data:/var/lib/zookeeper/data
-      - ./kafka_cluster/zk/logs:/var/lib/zookeeper/log
+      - ./storage/zk/data:/var/lib/zookeeper/data
+      - ./storage/zk/logs:/var/lib/zookeeper/log
 
   kafka1:
     image: confluentinc/cp-kafka:6.2.0
@@ -28,8 +23,6 @@ services:
     hostname: kafka1
     networks:
       - kafka-network
-    healthcheck:
-      test: ps augwwx | egrep [S]upportedKafka
     depends_on:
       - zookeeper
     ports:
@@ -38,15 +31,53 @@ services:
     environment:
       - KAFKA_BROKER_ID=1
       - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_ADVERTISED_LISTENERS=INSIDE://:19091,OUTSIDE://${KAFKA_LISTENER_NAME}:9091
+      - KAFKA_ADVERTISED_LISTENERS=INSIDE://:19091,OUTSIDE://${KAFKA_LISTENER_ADDRESS}:9091
       - KAFKA_LISTENERS=INSIDE://:19091,OUTSIDE://:9091
       - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
       - KAFKA_INTER_BROKER_LISTENER_NAME=INSIDE
       - BOOTSTRAP_SERVERS=kafka1:19091
       - KAFKA_JMX_PORT=19991
+      - KAFKA_DEFAULT_REPLICATION_FACTOR=1
+      - KAFKA_NUM_PARTITIONS=1
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
     volumes:
-      - ./kafka_cluster/kafka/kafka_1_data:/var/lib/kafka/data
+      - ./storage/kafka/kafka_1_data:/var/lib/kafka/data
     mem_limit: 512m
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:6.2.0
+    container_name: schema-registry 
+    hostname: schema-registry
+    networks:
+      - kafka-network
+    depends_on:
+      - zookeeper
+      - kafka1
+    ports:
+      - "2182:8081"
+    environment:
+      - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://kafka1:19091
+      - SCHEMA_REGISTRY_HOST_NAME=schema-registry
+      - SCHEMA_REGISTRY_LISTENERS=http://${SCHEMA_REGISTRY_LISTENER_ADDRESS}:8081
+      - SCHEMA_REGISTRY_TOPIC=${SCHEMA_REGISTRY_TOPIC}
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui
+    container_name: kafka-ui
+    hostname: kafka-ui
+    networks:
+      - kafka-network
+    depends_on:
+      - zookeeper
+      - schema-registry
+    ports:
+      - "2180:2180"
+    restart: always
+    environment:
+      - SERVER_PORT=2180
+      - KAFKA_CLUSTERS_0_NAME=kafka
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka1:19091
+      - KAFKA_CLUSTERS_0_SCHEMAREGISTRY=http://schema-registry:8081
 
 networks:
   kafka-network:
